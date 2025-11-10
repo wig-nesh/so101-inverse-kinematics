@@ -1004,9 +1004,16 @@ class IK_LM(IKSolver):
             Wn = self.k * E * np.eye(ets.n)
 
         J = ets.jacob0(q)
+
+        # manipulability makes no sense for a underactuated arm
+        s = np.linalg.svd(J, compute_uv=False)
+        manipulability = np.prod(s)
+
+        # print(manipulability)
+
         g = J.T @ self.We @ e
 
-        # Null-space motion
+        # Null-space motion ( will be 0 )
         qnull = _calc_qnull(
             ets=ets, q=q, J=J, λΣ=self.kq, λm=self.km, ps=self.ps, pi=self.pi
         )

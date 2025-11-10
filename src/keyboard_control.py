@@ -114,35 +114,87 @@ try:
         while viewer.is_running() and time.time() - start < 1000:
             step_start = time.time()
 
+            # with lock:
+            #     for k, direction in keys_pressed.items():
+            #         if k in key_to_joint_increase:
+            #             position_idx = key_to_joint_increase[k]
+            #             if position_idx == 1 or position_idx == 5:  # Special handling for joint 1 and 5
+            #                 position_idx = 0 if position_idx == 1 else 5
+            #                 if (target_qpos[position_idx]) < control_qlimit[1][position_idx] - JOINT_INCREMENT * direction:
+            #                     target_qpos[position_idx] += JOINT_INCREMENT * direction
+            #             elif position_idx == 4 or position_idx == 3:
+            #                 if target_gpos[position_idx] <= control_glimit[1][position_idx]:
+            #                     target_gpos[position_idx] += POSITION_INSERMENT * direction * 4
+            #             else:
+            #                 if target_gpos[position_idx] <= control_glimit[1][position_idx]:
+            #                     target_gpos[position_idx] += POSITION_INSERMENT * direction
+                        
+            #         elif k in key_to_joint_decrease:
+            #             position_idx = key_to_joint_decrease[k]
+            #             if position_idx == 1 or position_idx == 5:
+            #                 position_idx = 0 if position_idx == 1 else 5
+            #                 if (target_qpos[position_idx]) > control_qlimit[0][position_idx] - JOINT_INCREMENT * direction:
+            #                     target_qpos[position_idx] += JOINT_INCREMENT * direction
+            #             elif position_idx == 4 or position_idx == 3:
+            #                 if target_gpos[position_idx] >= control_glimit[0][position_idx]:
+            #                     target_gpos[position_idx] += POSITION_INSERMENT * direction * 4
+            #             else:
+            #                 if target_gpo``s[position_idx] >= control_glimit[0][position_idx]:
+            #                     target_gpos[position_idx] += POSITION_INSERMENT * direction
+            
             with lock:
                 for k, direction in keys_pressed.items():
-                    if k in key_to_joint_increase:
-                        position_idx = key_to_joint_increase[k]
-                        if position_idx == 1 or position_idx == 5:  # Special handling for joint 1 and 5
-                            position_idx = 0 if position_idx == 1 else 5
-                            if (target_qpos[position_idx]) < control_qlimit[1][position_idx] - JOINT_INCREMENT * direction:
-                                target_qpos[position_idx] += JOINT_INCREMENT * direction
-                        elif position_idx == 4 or position_idx == 3:
-                            if target_gpos[position_idx] <= control_glimit[1][position_idx]:
-                                target_gpos[position_idx] += POSITION_INSERMENT * direction * 4
-                        else:
-                            if target_gpos[position_idx] <= control_glimit[1][position_idx]:
-                                target_gpos[position_idx] += POSITION_INSERMENT * direction
-                        
-                    elif k in key_to_joint_decrease:
-                        position_idx = key_to_joint_decrease[k]
-                        if position_idx == 1 or position_idx == 5:
-                            position_idx = 0 if position_idx == 1 else 5
-                            if (target_qpos[position_idx]) > control_qlimit[0][position_idx] - JOINT_INCREMENT * direction:
-                                target_qpos[position_idx] += JOINT_INCREMENT * direction
-                        elif position_idx == 4 or position_idx == 3:
-                            if target_gpos[position_idx] >= control_glimit[0][position_idx]:
-                                target_gpos[position_idx] += POSITION_INSERMENT * direction * 4
-                        else:
-                            if target_gpos[position_idx] >= control_glimit[0][position_idx]:
-                                target_gpos[position_idx] += POSITION_INSERMENT * direction
-                                
-            print("target_gpos:", [f"{x:.3f}" for x in target_gpos])
+                    print(target_gpos)
+                    # --- World-frame XY motion (WASD) ---
+                    if k in ['w', 's', 'a', 'd']:
+                        # Map key to world direction in your scene (forward = -y, left = +x)
+                        if k == 'w':
+                            move_x, move_y = POSITION_INSERMENT, 0
+                        elif k == 's':
+                            move_x, move_y = -POSITION_INSERMENT, 0
+                        elif k == 'a':
+                            move_x, move_y = 0, -POSITION_INSERMENT
+                        elif k == 'd':
+                            move_x, move_y = 0, POSITION_INSERMENT
+
+                        angle_curr = mjdata.qpos[qpos_indices][0]
+                        forward_curr = target_gpos_last[0]
+                        x_curr, y_curr = forward_curr * np.cos(angle_curr), forward_curr * np.sin(angle_curr)
+                        x_new = x_curr + move_x 
+                        y_new = y_curr + move_y
+
+                        theta_update = np.arctan2(y_new,x_new) - np.arctan2(y_curr,x_curr)
+                        forward_update = np.sqrt(x_new**2 + y_new**2) - np.sqrt(x_curr**2 + y_curr**2)
+
+                        target_qpos[0] += theta_update
+                        target_gpos[0] += forward_update
+
+                    # --- Vertical motion (r/f) ---
+                    elif k in ['r', 'f']:
+                        move_dir = 1 if k == 'r' else -1
+                        target_gpos[2] += move_dir * POSITION_INSERMENT
+                        target_gpos[2] = np.clip(target_gpos[2], control_glimit[0][2], control_glimit[1][2])
+
+                    # --- Orientation (Roll/Pitch) ---
+                    elif k in ['q', 'e', 't', 'g']:
+                        ori_idx = {'q': 3, 'e': 3, 't': 4, 'g': 4}[k]
+                        move_dir = 1 if k in ['q', 'g'] else -1
+                        target_gpos[ori_idx] += move_dir * POSITION_INSERMENT * 4
+                        target_gpos[ori_idx] = np.clip(
+                            target_gpos[ori_idx],
+                            control_glimit[0][ori_idx],
+                            control_glimit[1][ori_idx],
+                        )
+
+                    # --- Gripper (z/c) ---
+                    elif k in ['z', 'c']:
+                        move_dir = 1 if k == 'z' else -1
+                        target_gpos[5] += move_dir * POSITION_INSERMENT
+                        target_gpos[5] = np.clip(target_gpos[5], control_glimit[0][5], control_glimit[1][5])
+
+
+                               
+            # print("target_gpos:", [f"{x:.3f}" for x in target_gpos])
             fd_qpos = mjdata.qpos[qpos_indices][1:5]
             qpos_inv, ik_success = lerobot_IK(fd_qpos, target_gpos, robot=robot)
             
