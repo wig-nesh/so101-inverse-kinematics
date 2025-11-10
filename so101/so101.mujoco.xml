@@ -104,6 +104,11 @@
         </body>
       </body>
     </body>
+    <!-- <geom name="circle_marker"
+          type="cylinder"
+          pos="0.2 0.0 0.02"
+          size="0.05 0.001"
+          rgba="0.2 0.2 1.0 0.3"/>  pastel blue + transparent -->
   </worldbody>
 
   <equality>

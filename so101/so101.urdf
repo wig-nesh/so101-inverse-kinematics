@@ -340,7 +340,7 @@
 
   <!-- Joint from wrist to gripper -->
   <joint name="wrist_roll" type="revolute">
-    <origin xyz="5.55112e-17 -0.0611 0.0181" rpy="1.5708 0.0486795 3.14159"/>
+    <origin xyz="5.55112e-17 -0.0611 0.0181" rpy="1.5708 0.0 3.14159"/>
     <parent link="wrist_link"/>
     <child link="gripper_link"/>
     <axis xyz="0 0 1"/>
@@ -368,13 +368,14 @@
 
   <!-- Joint from shoulder to upper_arm -->
   <joint name="shoulder_lift" type="revolute">
+    <!-- <origin xyz="-0.0303992 -0.0182778 -0.0542" rpy="-1.5708 -1.5708 0"/> -->
     <origin xyz="-0.0303992 -0.0182778 -0.0542" rpy="-1.5708 -1.5708 0"/>
     <parent link="shoulder_link"/>
     <child link="upper_arm_link"/>
     <axis xyz="0 0 1"/>
     <limit effort="10" velocity="10" lower="-1.74533" upper="1.74533"/>
   </joint>
-
+  
   <!-- Joint from base to shoulder -->
   <joint name="shoulder_pan" type="revolute">
     <origin xyz="0.0388353 -8.97657e-09 0.0624" rpy="3.14159 4.18253e-17 -3.14159"/>
