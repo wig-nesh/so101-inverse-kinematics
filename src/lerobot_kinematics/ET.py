@@ -11,7 +11,7 @@ from numpy.random import uniform
 from numpy.linalg import inv, det, cond, svd
 from spatialmath import SE3, SE2
 from lerobot_kinematics.params import get_param
-from lerobot_kinematics.IK import IK_GN, IK_LM, IK_NR, IK_QP
+from lerobot_kinematics.IK import IK_LM
 from lerobot_kinematics.fknm import (
     ETS_init,
     ETS_fkine,

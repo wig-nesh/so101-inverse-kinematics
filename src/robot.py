@@ -125,3 +125,20 @@ def smooth_joint_motion(q_now, q_new, robot):
     
     robot.q = q_new
     return q_new
+
+def return_jacobian(qpos_data, robot):
+    if len(qpos_data) != len(robot.qlim[0]):
+        print(len(qpos_data), len(robot.qlim[0]))
+        raise Exception("The dimensions of qpose_data are not the same as the robot joint dimensions")
+    
+    J = robot.jacob0(qpos_data)
+    return J
+
+def manipulability(J):
+    
+    s = np.linalg.svd(J, compute_uv=False)
+    m = sqrt(np.prod(s))
+
+    condition = s[0] / s[-1]
+
+    return m, condition

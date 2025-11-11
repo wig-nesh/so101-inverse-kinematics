@@ -5,7 +5,7 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 import time
-from robot import lerobot_IK, lerobot_FK, create_so101
+from robot import lerobot_IK, lerobot_FK, create_so101, return_jacobian, manipulability
 from pynput import keyboard
 import threading
 
@@ -144,7 +144,7 @@ try:
             
             with lock:
                 for k, direction in keys_pressed.items():
-                    print(target_gpos)
+                    # print(target_gpos)
                     # --- World-frame XY motion (WASD) ---
                     if k in ['w', 's', 'a', 'd']:
                         # Map key to world direction in your scene (forward = -y, left = +x)
@@ -153,9 +153,9 @@ try:
                         elif k == 's':
                             move_x, move_y = -POSITION_INSERMENT, 0
                         elif k == 'a':
-                            move_x, move_y = 0, -POSITION_INSERMENT
-                        elif k == 'd':
                             move_x, move_y = 0, POSITION_INSERMENT
+                        elif k == 'd':
+                            move_x, move_y = 0, -POSITION_INSERMENT
 
                         angle_curr = mjdata.qpos[qpos_indices][0]
                         forward_curr = target_gpos_last[0]
@@ -168,6 +168,9 @@ try:
 
                         target_qpos[0] += theta_update
                         target_gpos[0] += forward_update
+
+                        target_qpos[0] = np.clip(target_qpos[0], control_qlimit[0][0], control_qlimit[1][0])
+                        target_gpos[0] = np.clip(target_gpos[0], control_glimit[0][0], control_glimit[1][0])
 
                     # --- Vertical motion (r/f) ---
                     elif k in ['r', 'f']:
@@ -197,6 +200,12 @@ try:
             # print("target_gpos:", [f"{x:.3f}" for x in target_gpos])
             fd_qpos = mjdata.qpos[qpos_indices][1:5]
             qpos_inv, ik_success = lerobot_IK(fd_qpos, target_gpos, robot=robot)
+
+            jacobian = return_jacobian(mjdata.qpos[qpos_indices][1:5], robot=robot)
+
+            m_value, condition = manipulability(jacobian)
+            print(f'Manipulability: {m_value:.6f}')
+            print(f'Condition Number: {condition:.6f}')
             
             if ik_success:  # Check if IK solution is valid
                 # target_qpos = np.concatenate((target_qpos[0:1], qpos_inv[1:5], target_qpos[5:]))
