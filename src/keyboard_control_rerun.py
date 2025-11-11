@@ -86,7 +86,9 @@ listener.start()
 # ------------------------------
 # Initialize Rerun
 # ------------------------------
-rr.init("so101_teleop_rerun", spawn=True)
+import time
+timestamp = int(time.time())
+rr.init(f"so101_keyboard_rerun_{timestamp}", spawn=True)
 
 # Load URDF and build joint paths
 urdf_path = Path("so101/so101.urdf")
@@ -143,7 +145,7 @@ robot_name, joint_paths = build_joint_paths(urdf_path)
 target_gpos_last = init_gpos.copy()
 target_qpos_last = init_qpos.copy()
 
-x_new, y_new = init_gpos[0], 0.0
+x_new, y_new = 0.0, init_gpos[0]
 
 try:
     start = time.time()
@@ -195,8 +197,8 @@ try:
 
                 elif k in ['z', 'c']:
                     move_dir = 1 if k == 'z' else -1
-                    target_gpos[5] += move_dir * POSITION_INCREMENT
-                    target_gpos[5] = np.clip(target_gpos[5], control_glimit[0][5], control_glimit[1][5])
+                    target_qpos[5] += move_dir * POSITION_INCREMENT
+                    target_qpos[5] = np.clip(target_qpos[5], control_qlimit[0][5], control_qlimit[1][5])
 
         # ====== IK, Manipulability ======
         fd_qpos = mjdata.qpos[qpos_indices][1:5]
@@ -214,11 +216,12 @@ try:
             target_gpos = target_gpos_last.copy()
 
         # ====== Rerun Visualization ======
-        end_effector_pos = [y_new, -x_new, target_gpos[2]]
+        end_effector_pos = [x_new, y_new, target_gpos[2]]
+        end_effector_pos = [end_effector_pos[1], -end_effector_pos[0], end_effector_pos[2]]
         rr.log("end_effector", rr.Transform3D(translation=end_effector_pos))
         rr.log("end_effector/point", rr.Points3D([end_effector_pos], radii=0.01, colors=[255, 0, 0]))
         rr.log("manipulability/value", rr.Scalars(m_value))
-        rr.log("manipulability/condition", rr.Scalars(condition))
+        rr.log("condition/kappa", rr.Scalars(condition))
 
         # Log joint angles for URDF visualization (matching lerobot's approach)
         # New URDF joint names matching MuJoCo XML
