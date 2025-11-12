@@ -5,11 +5,10 @@ import time
 import threading
 from pynput import keyboard
 import rerun as rr
-from rerun import RotationAxisAngle
 from pathlib import Path
-import xml.etree.ElementTree as ET
 
 from robot import lerobot_IK, lerobot_FK, create_so101, return_jacobian, manipulability
+from urdf_utils import init_rerun_with_urdf, log_joint_angles
 
 np.set_printoptions(linewidth=200)
 os.environ["MUJOCO_GL"] = "egl"
@@ -86,58 +85,9 @@ listener.start()
 # ------------------------------
 # Initialize Rerun
 # ------------------------------
-import time
 timestamp = int(time.time())
-rr.init(f"so101_keyboard_rerun_{timestamp}", spawn=True)
-
-# Load URDF and build joint paths
 urdf_path = Path("so101/so101.urdf")
-rr.log_file_from_path(str(urdf_path))
-
-# Build joint paths from URDF structure (similar to lerobot's _build_joint_paths)
-def build_joint_paths(urdf_path):
-    """Build hierarchical joint paths from URDF"""
-    tree = ET.parse(urdf_path)
-    root = tree.getroot()
-    robot_name = root.get('name', 'robot')
-    
-    # Map joint name -> (parent, child, axis)
-    joint_info = {}
-    for joint in root.findall('.//joint[@type="revolute"]'):
-        name = joint.get('name')
-        parent = joint.find('parent').get('link')
-        child = joint.find('child').get('link')
-        axis_elem = joint.find('axis')
-        axis = [float(x) for x in axis_elem.get('xyz').split()] if axis_elem is not None else [0, 0, 1]
-        joint_info[name] = {'parent': parent, 'child': child, 'axis': axis}
-    
-    # Build hierarchical paths: parent/joint/child
-    child_to_joint = {info['child']: (name, info) for name, info in joint_info.items()}
-    cache = {}
-    
-    def build_path(child):
-        if child in cache:
-            return cache[child]
-        if child not in child_to_joint:
-            # Base link
-            path = child
-        else:
-            joint_name, info = child_to_joint[child]
-            parent_path = build_path(info['parent'])
-            path = f"{parent_path}/{joint_name}/{child}"
-        cache[child] = path
-        return path
-    
-    joint_paths = {}
-    for name, info in joint_info.items():
-        joint_paths[name] = {
-            'path': build_path(info['child']),
-            'axis': info['axis']
-        }
-    
-    return robot_name, joint_paths
-
-robot_name, joint_paths = build_joint_paths(urdf_path)
+robot_name, joint_paths = init_rerun_with_urdf(f"so101_keyboard_rerun_{timestamp}", urdf_path)
 
 # ------------------------------
 # Main Loop
@@ -166,7 +116,9 @@ try:
                         move_x, move_y = 0, -POSITION_INCREMENT
 
                     angle_curr = mjdata.qpos[qpos_indices][0]
+                    # angle_curr = target_qpos_last[0]
                     forward_curr = target_gpos_last[0]
+                    # forward_curr = target_gpos[0]
                     x_curr, y_curr = forward_curr * np.cos(angle_curr), forward_curr * np.sin(angle_curr)
                     x_new = x_curr + move_x
                     y_new = y_curr + move_y
@@ -216,26 +168,12 @@ try:
             target_gpos = target_gpos_last.copy()
 
         # ====== Rerun Visualization ======
-        end_effector_pos = [x_new, y_new, target_gpos[2]]
-        end_effector_pos = [end_effector_pos[1], -end_effector_pos[0], end_effector_pos[2]]
-        rr.log("end_effector", rr.Transform3D(translation=end_effector_pos))
-        rr.log("end_effector/point", rr.Points3D([end_effector_pos], radii=0.01, colors=[255, 0, 0]))
         rr.log("manipulability/value", rr.Scalars(m_value))
         rr.log("condition/kappa", rr.Scalars(condition))
 
-        # Log joint angles for URDF visualization (matching lerobot's approach)
-        # New URDF joint names matching MuJoCo XML
+        # Log joint angles for URDF visualization
         joint_names = ["Rotation", "Pitch", "Elbow", "Wrist_Pitch", "Wrist_Roll", "Jaw"]
-        for i, joint_name in enumerate(joint_names):
-            if joint_name not in joint_paths:
-                continue
-            joint_angle = target_qpos[i]
-            joint_data = joint_paths[joint_name]
-            path = f"{robot_name}/{joint_data['path']}"
-            axis = joint_data['axis']
-            rotation = RotationAxisAngle(axis=axis, angle=joint_angle)
-            rr.log(path, rr.Transform3D(rotation=rotation))
-
+        log_joint_angles(robot_name, joint_paths, joint_names, target_qpos[:6])
         rr.log("joint_angles", rr.Scalars(target_qpos[:6]))
 
         # Maintain simulation timing

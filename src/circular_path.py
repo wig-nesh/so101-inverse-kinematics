@@ -23,11 +23,12 @@ mjdata = mujoco.MjData(mjmodel)
 # Create robot
 robot = create_so101()
 
-# Define joint limits
-control_qlimit = [[-2.1, -3.1, -0.0, -1.375,  -1.57, -0.15],
-                  [ 2.1,  0.0,  3.1,  1.475,   3.1,  1.5]]
+# Define joint limits matching MuJoCo XML and URDF
+# [Rotation, Pitch, Elbow, Wrist_Pitch, Wrist_Roll, Jaw]
+control_qlimit = [[-2.2,  -3.14159, 0.0, -2.0, -3.14159, -0.2],
+                  [ 2.2,   0.2,     3.14159,  1.8,  3.14159,  2.0]]
 control_glimit = [[0.125, -0.4,  0.046, -3.1, -0.75, -1.5],
-                  [0.340,  0.4,  0.23, 2.0,  1.57,  1.5]]
+                  [0.340,  0.4,  0.23,  2.0,  1.57,  1.5]]
 
 # Initialize target joint positions
 init_qpos = np.array([0.0, -3.14, 3.14, 0.0, -1.57, -0.157])

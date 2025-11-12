@@ -2,22 +2,23 @@
 
 import os
 import mujoco
-import mujoco.viewer
 import numpy as np
 import time
 from lerobot_kinematics import lerobot_IK, lerobot_FK, get_robot, feetech_arm
 
 from pynput import keyboard
 import threading
+from pathlib import Path
+import rerun as rr
 
 # For Feetech Motors
 from lerobot_kinematics.lerobot.feetech import FeetechMotorsBus
 import json
 
-np.set_printoptions(linewidth=200)
+from urdf_utils import init_rerun_with_urdf, log_joint_angles
+from robot import return_jacobian, manipulability, create_so101
 
-# Set up the MuJoCo render backend
-os.environ["MUJOCO_GL"] = "egl"
+np.set_printoptions(linewidth=200)
 
 # Define joint names
 JOINT_NAMES = ["Rotation", "Pitch", "Elbow", "Wrist_Pitch", "Wrist_Roll", "Jaw"]
@@ -29,16 +30,18 @@ qpos_indices = np.array([mjmodel.jnt_qposadr[mjmodel.joint(name).id] for name in
 mjdata = mujoco.MjData(mjmodel)
 
 robot = get_robot('so100')
+robot_ik = create_so101()  # Robot for manipulability calculations
 
 # Define joint control increment (in radians)
-JOINT_INCREMENT = 0.005
-POSITION_INCREMENT = 0.0008
+JOINT_INCREMENT = 0.005*1.5
+POSITION_INCREMENT = 0.0008*1.5
 
-# Define joint limits
-control_qlimit = [[-2.1, -3.1, -0.0, -1.375,  -1.57, -0.15], 
-                  [ 2.1,  0.0,  3.1,  1.475,   3.1,  1.5]]
-control_glimit = [[0.125, -0.4,  0.046, -3.1, -0.75, -1.5], 
-                  [0.340,  0.4,  0.23, 2.0,  1.57,  1.5]]
+# Define joint limits matching MuJoCo XML and URDF
+# [Rotation, Pitch, Elbow, Wrist_Pitch, Wrist_Roll, Jaw]
+control_qlimit = [[-2.2,  -3.14159, 0.0, -2.0, -3.14159, -0.2],
+                  [ 2.2,   0.2,     3.14159,  1.8,  3.14159,  2.0]]
+control_glimit = [[0.125, -0.4,  0.046, -3.1, -0.75, -1.5],
+                  [0.340,  0.4,  0.23,  2.0,  1.57,  1.5]]
 
 # Initialize target joint positions
 init_qpos = np.array([0.0, -3.14, 3.14, 0.0, -1.57, -0.157])
@@ -117,24 +120,29 @@ motors = {"shoulder_pan": (1, "sts3215"),
 
 follower_arm = feetech_arm(driver_port="/dev/ttyACM0", calibration_file="so101/calibration.json" )
 
-t = 0
-try:
-    # Launch MuJoCo viewer
-    with mujoco.viewer.launch_passive(mjmodel, mjdata) as viewer:
-        start = time.time()
-        if t ==0 :
-            mjdata.qpos[qpos_indices] = init_qpos
-            mujoco.mj_step(mjmodel, mjdata)
-            with viewer.lock():
-                viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = int(mjdata.time % 2)
-            viewer.sync()
-            mjdata.qpos[qpos_indices] = init_qpos   
-            mujoco.mj_step(mjmodel, mjdata)    
-        t = t + 1
-        while viewer.is_running() and time.time() - start < 1000:
-            step_start = time.time()
+# ------------------------------
+# Initialize Rerun
+# ------------------------------
+timestamp = int(time.time())
+urdf_path = Path("so101/so101.urdf")
+robot_name, joint_paths = init_rerun_with_urdf(f"so101_real_control_{timestamp}", urdf_path)
 
-            with lock:
+t = 0
+start = time.time()
+
+try:
+    # Initialize robot position
+    if t == 0:
+        mjdata.qpos[qpos_indices] = init_qpos
+        mujoco.mj_step(mjmodel, mjdata)
+        mjdata.qpos[qpos_indices] = init_qpos   
+        mujoco.mj_step(mjmodel, mjdata)    
+    t = t + 1
+    
+    while time.time() - start < 1000:
+        step_start = time.time()
+
+        with lock:
                 # for k, direction in keys_pressed.items():
                 #     if k in key_to_joint_increase:
                 #         position_idx = key_to_joint_increase[k]
@@ -205,38 +213,58 @@ try:
 
                     elif k in ['z', 'c']:
                         move_dir = 1 if k == 'z' else -1
-                        target_qpos[5] += move_dir * POSITION_INCREMENT
+                        target_qpos[5] += move_dir * POSITION_INCREMENT * 4
                         target_qpos[5] = np.clip(target_qpos[5], control_qlimit[0][5], control_qlimit[1][5])
 
-            # print("target_gpos:", [f"{x:.3f}" for x in target_gpos])
-            # fd_qpos = np.concatenate(([0.0,], mjdata.qpos[qpos_indices][1:5]))
-            fd_qpos = mjdata.qpos[qpos_indices][1:5]
-            qpos_inv, IK_success = lerobot_IK(fd_qpos, target_gpos, robot=robot)
+        # print("target_gpos:", [f"{x:.3f}" for x in target_gpos])
+        # fd_qpos = np.concatenate(([0.0,], mjdata.qpos[qpos_indices][1:5]))
+        fd_qpos = mjdata.qpos[qpos_indices][1:5]
+        qpos_inv, IK_success = lerobot_IK(fd_qpos, target_gpos, robot=robot)
+        
+        # Compute manipulability for visualization
+        jacobian = return_jacobian(fd_qpos, robot=robot_ik)
+        m_value, condition = manipulability(jacobian)
 
-            if np.all(qpos_inv != -1.0):  # Check if IK solution is valid
-                target_qpos = np.concatenate((target_qpos[0:1], qpos_inv[:4], target_qpos[5:]))
-                print("target_qpos:", [f"{x:.3f}" for x in target_qpos])
-                mjdata.qpos[qpos_indices] = target_qpos
-                # mjdata.ctrl[qpos_indices] = target_qpos
-                
-                mujoco.mj_step(mjmodel, mjdata)
-                with viewer.lock():
-                    viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = int(mjdata.time % 2)
-                viewer.sync()
+        if np.all(qpos_inv != -1.0):  # Check if IK solution is valid
+            target_qpos = np.concatenate((target_qpos[0:1], qpos_inv[:4], target_qpos[5:]))
+            print("target_qpos:", [f"{x:.3f}" for x in target_qpos])
+            mjdata.qpos[qpos_indices] = target_qpos
+            # mjdata.ctrl[qpos_indices] = target_qpos
+            
+            mujoco.mj_step(mjmodel, mjdata)
 
-                follower_arm.action(target_qpos)
-                target_gpos_last = target_gpos.copy()
-            else:
-                target_gpos = target_gpos_last.copy()
+            follower_arm.action(target_qpos)
+            target_gpos_last = target_gpos.copy()
+            
+            # ====== Rerun Visualization ======
+            # Log end effector position
+            # angle_curr = target_qpos[0]
+            # forward_curr = target_gpos[0]
+            # x_pos = forward_curr * np.cos(angle_curr)
+            # y_pos = forward_curr * np.sin(angle_curr)
+            # z_pos = target_gpos[2]
+            # end_effector_pos = np.array([x_pos, y_pos, z_pos])
+            # rr.log("end_effector", rr.Transform3D(translation=end_effector_pos))
+            # rr.log("end_effector/point", rr.Points3D([end_effector_pos], radii=0.01, colors=[255, 0, 0]))
+            
+            # Log manipulability metrics
+            rr.log("manipulability/value", rr.Scalars(m_value))
+            rr.log("condition/kappa", rr.Scalars(condition))
+            
+            # Log joint angles for URDF visualization
+            joint_names = ["Rotation", "Pitch", "Elbow", "Wrist_Pitch", "Wrist_Roll", "Jaw"]
+            log_joint_angles(robot_name, joint_paths, joint_names, target_qpos[:6])
+            rr.log("joint_angles", rr.Scalars(target_qpos[:6]))
+        else:
+            target_gpos = target_gpos_last.copy()
 
-            # print()
-            time_until_next_step = mjmodel.opt.timestep - (time.time() - step_start)
-            if time_until_next_step > 0:
-                time.sleep(time_until_next_step)
+        # print()
+        time_until_next_step = mjmodel.opt.timestep - (time.time() - step_start)
+        if time_until_next_step > 0:
+            time.sleep(time_until_next_step)
 
 except KeyboardInterrupt:
     print("User interrupted the simulation.")
 finally:
     listener.stop()
     follower_arm.disconnect()
-    viewer.close()
