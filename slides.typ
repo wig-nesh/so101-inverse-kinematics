@@ -48,15 +48,15 @@ $
 == Manipulability
 
 $
-  omega = sqrt(det(J * J^T))
+  omega = sqrt(det(J * J^perp))
 $
 
-But for our 5-DOF arm, `J.shape() == (6, 5)`, so $J * J^T$ is not full rank and $det(J * J^T) = 0$ always.
+But for our 5-DOF arm, `J.shape() == (6, 5)`, so $J * J^perp$ is not full rank and $det(J * J^perp) = 0$ always.
 
 So instead, we use the singular values of `J` to define manipulability as:
 
 $
-  omega = sqrt(product_"i=1"^6 sigma_i)
+  omega = sqrt(product_"i=1"^5 sigma_i)
 $
 
 == Condition
@@ -86,36 +86,57 @@ $kappa >> 1$ implies the arm is close to a singularity, while $kappa approx 1$ i
 
 There is no end-effector yaw.
 
-== Feasibility Projected IK
+== Feasibility-Projected IK
 
-- 5-DOF arm can only move on a 5D “surface” inside the 6D space
-- Project desired pose to closest feasible pose on that surface
+A 5-DOF arm moves on a 5D manifold in 6D task space. We project the desired pose onto this feasible manifold and solve for the corresponding joint update.
 
+*Projection step:*
+The achievable motion is the projection of the desired motion onto the range of the Jacobian:
 $
-  q^* &= arg min_q ||W_x (f(q)-x_d)||^2 \
-  Delta x &approx J Delta q \
-  Delta x_"achievable" &= J J^+ Delta x
+Delta x_"achievable" = J J^+ Delta x
 $
 
-From this we solve for:
+*Joint update:*
+We seek $Delta q$ satisfying $J Delta q approx Delta x_"achievable"$ via damped least-squares:
+$
+Delta q = arg min_(Delta q) || W_x (J Delta q - Delta x_"achievable") ||^2 + lambda^2 ||Delta q||^2
+$
 
+*Derivation:*
+Expanding the objective:
 $
-  
+L(Delta q) = (J Delta q - Delta x_"achievable")^top W_x^top W_x (J Delta q - Delta x_"achievable") + lambda^2 Delta q^top Delta q
 $
+
+Taking the derivative with respect to $Delta q$ and setting to zero:
+$
+(diff L) / (diff Delta q) = 2J^top W_x^top W_x (J Delta q - Delta x_"achievable") + 2lambda^2 Delta q = 0
+$
+
+Rearranging:
+$
+J^top W_x^top W_x J Delta q + lambda^2 Delta q = J^top W_x^top W_x Delta x_"achievable"
+$
+
+*Solution:*
+Factoring and solving for $Delta q$:
+$
+(J^top W_x^top W_x J + lambda^2 I) Delta q = J^top W_x^top W_x Delta x_"achievable"
+$
+
+Substituting $Delta x_"achievable" = J J^+ Delta x$:
+$
+Delta q = (J^top W_x^top W_x J + lambda^2 I)^(-1) J^top W_x^top W_x J J^+ Delta x
+$
+
+This directly computes joint motions that respect the kinematic constraints while minimizing weighted task-space error.
 
 == Where it Fails
 
 - Because the yaw axis is missing, when the end effector moves off the 2D plane defined by the first joint axis, the IK solver continuously fails to find a solution.
-- It barely leaves the 2D plane in practice.
 - The "projected" solution is always just on (or very close to) the 2D plane.
 
 = The Workaround that Works
-
-== Constraining the IK
-- Instead, we constrain the IK solver.
-- Never solve for the first joint angle, so the solver thinks the motion is on a 2D plane.
-- Use a geometric IK to get back full position control.
-- End effector yaw is still not controllable :( but at least the solver doesnt continuously fail when we leave the 2D plane.
 
 == Fool the IK solver
 
@@ -126,6 +147,17 @@ $
 The solver never gets end effector y-axis position or yaw updates, and never updates the first joint angle.
 
 This way the solver doesnt continuously fail when we leave the 2D plane.
+
+== Handling the y-axis position
+
+#align(center)[
+  #image("images/drawing.png", width: 40%)
+]
+
+$
+  theta_"update" &= arctan(y_d,x_d) - arctan(y,x) \
+  x_"update" &= sqrt(y'^2+x'^2) - sqrt(y^2+x^2)
+$
 
 == Limitations
 
