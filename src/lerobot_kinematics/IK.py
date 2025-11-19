@@ -819,13 +819,16 @@ class IK_LM(IKSolver):
 
         J = ets.jacob0(q)
 
-        # manipulability makes no sense for a underactuated arm
-        # s = np.linalg.svd(J, compute_uv=False)
-        # manipulability = np.prod(s)
+        # g = J.T @ self.We @ e
+        # Compute pseudoinverse of J
+        J_pinv = np.linalg.pinv(J)
 
-        # print(manipulability)
+        # Project error into feasible subspace
+        e_proj = J @ J_pinv @ e
 
-        g = J.T @ self.We @ e
+        # Projected gradient term
+        g = J.T @ self.We @ e_proj
+
 
         # Null-space motion ( will be 0 )
         qnull = _calc_qnull(

@@ -69,7 +69,7 @@ def extract_surface(grid, grid_axes, level):
 
 def visualize_surface(mesh, title, cmap='turquoise'):
     p = pv.Plotter()
-    p.add_mesh(mesh, color=cmap, opacity=1, smooth_shading=True)
+    p.add_mesh(mesh, color=cmap, opacity=0.8, smooth_shading=True)
     p.add_axes()
     p.show_grid()
     p.add_title(title)
@@ -124,7 +124,7 @@ def main():
     robot = create_so101()
 
     print("Sampling joint configurations...")
-    joint_samples = sample_joint_configs(num_samples=200000)
+    joint_samples = sample_joint_configs(num_samples=200000) # 1000000
 
     print("Computing reachable workspace...")
     positions = compute_workspace(robot, joint_samples)

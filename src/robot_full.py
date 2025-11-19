@@ -23,9 +23,9 @@ def round_value(value):
 
 def create_so101():
     # to joint 1
-    # E1 = ET.tx(0.0612)
-    # E2 = ET.tz(0.0598)
-    # E3 = ET.Rz()
+    E1 = ET.tx(0.0612)
+    E2 = ET.tz(0.0598)
+    E3 = ET.Rz()
     
     # to joint 2
     E4 = ET.tx(0.02943)
@@ -50,11 +50,12 @@ def create_so101():
     # to gripper 
     # E17 = ET.tx(0.09538)
     
-    so101 = E4 * E5 * E6 * E7 * E8 * E9 * E10 * E11 * E12 * E13 * E14 * E15 # E1 * E2 * E3 * E17 
+    so101 = E1 * E2 * E3 * E4 * E5 * E6 * E7 * E8 * E9 * E10 * E11 * E12 * E13 * E14 * E15 # * E17 
     
     # Set joint limits
-    so101.qlim = [[-3.14158, -0.2,     -1.5, -3.14158], 
-                  [ 0.2,      3.14158,  1.5,  3.14158]]
+    so101.qlim = [[-3.14158, -3.14158, -0.2,     -1.5, -3.14158], 
+                  [3.14158,  0.2,      3.14158,  1.5,  3.14158]]
+    
     
     return so101
 
@@ -100,7 +101,8 @@ def lerobot_IK(q_now, target_pose, robot):
             q0=q_now,
             ilimit=10,  # 10 iterations
             slimit=2,  # 1 is the limit
-            tol=1e-3)  # tolerance for convergence
+            tol=1e-3,  # tolerance for convergence
+            mask=[1, 1, 1, 1, 1, 1])  
     
     if sol.success:
         # If IK solution is successful, 
