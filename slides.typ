@@ -34,6 +34,7 @@ Denavit Hartenberg (DH) parameters describe each joint using four values $a_i, a
 - Elementary Transform Sequence (ETS) represents each joint as a separate transform.
 - More intuitive frame assignment.
 - Simply compose transforms to get forward kinematics.
+- DH parameters might be only 4 parameters per joint, but when ETS has only 6 parameters per joint and is easier to work with, the tradeoff is not worth it.
 
 $
   ""^0 T_e = product_"i=1"^n E_i(eta_i)

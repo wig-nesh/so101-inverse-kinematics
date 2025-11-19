@@ -4,3 +4,4 @@ temp/
 *cache/
 *.egg-info/
 *.so
+temp*
