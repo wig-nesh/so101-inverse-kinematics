@@ -1,6 +1,4 @@
-import matplotlib.pyplot as plt
 import numpy as np
-import open3d as o3d
 import pyvista as pv
 from scipy.ndimage import gaussian_filter
 from skimage import measure
